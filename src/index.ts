@@ -1,66 +1,157 @@
 import { DurableObject } from 'cloudflare:workers';
 
-/**
- * Welcome to Cloudflare Workers! This is your first Durable Objects application.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your Durable Object in action
- * - Run `npm run deploy` to publish your application
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/durable-objects
- */
+interface Attachment {
+	clientId: string;
+}
 
-/** A Durable Object's behavior is defined in an exported Javascript class */
 export class SergameState extends DurableObject<Env> {
-	/**
-	 * The constructor is invoked once upon creation of the Durable Object, i.e. the first call to
-	 * 	`DurableObjectStub::get` for a given identifier (no-op constructors can be omitted)
-	 *
-	 * @param ctx - The interface for interacting with Durable Object state
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 */
+	private nextId: number;
+
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
+		this.nextId = 1;
+		for (const ws of ctx.getWebSockets()) {
+			const att = ws.deserializeAttachment() as Attachment | null;
+			if (!att) continue;
+			const n = Number(att.clientId.split('-')[1]);
+			if (Number.isFinite(n) && n >= this.nextId) this.nextId = n + 1;
+		}
 	}
 
-	/**
-	 * The Durable Object exposes an RPC method sayHello which will be invoked when a Durable
-	 *  Object instance receives a request from a Worker via the same method invocation on the stub
-	 *
-	 * @param name - The name provided to a Durable Object instance from a Worker
-	 * @returns The greeting to be sent back to the Worker
-	 */
-	async sayHello(name: string): Promise<string> {
-		return `Hello, ${name}!`;
+	async fetch(request: Request): Promise<Response> {
+		if (request.headers.get('Upgrade') !== 'websocket') {
+			return new Response('expected websocket', { status: 426 });
+		}
+
+		const pair = new WebSocketPair();
+		const client = pair[0];
+		const server = pair[1];
+
+		const clientId = `client-${this.nextId++}`;
+		this.ctx.acceptWebSocket(server);
+		server.serializeAttachment({ clientId } satisfies Attachment);
+		server.send(JSON.stringify({ type: 'hello', clientId }));
+
+		return new Response(null, { status: 101, webSocket: client });
+	}
+
+	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+		if (typeof message !== 'string') return;
+
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(message);
+		} catch {
+			return;
+		}
+		if (!parsed || typeof parsed !== 'object' || (parsed as { type?: unknown }).type !== 'press') return;
+
+		const att = ws.deserializeAttachment() as Attachment | null;
+		if (!att) return;
+
+		const payload = JSON.stringify({
+			type: 'press',
+			clientId: att.clientId,
+			timestamp: Date.now(),
+		});
+		for (const peer of this.ctx.getWebSockets()) {
+			try {
+				peer.send(payload);
+			} catch {
+				// peer закрылся между вызовами — игнорируем
+			}
+		}
+	}
+
+	async webSocketClose(ws: WebSocket, code: number, _reason: string, _wasClean: boolean): Promise<void> {
+		try {
+			ws.close(code, 'closing');
+		} catch {
+			// уже закрыт
+		}
+	}
+
+	async webSocketError(ws: WebSocket, _error: unknown): Promise<void> {
+		try {
+			ws.close(1011, 'error');
+		} catch {
+			// уже закрыт
+		}
 	}
 }
 
+const CLIENT_HTML = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>sergame</title>
+<style>
+	body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+	h1 { margin-bottom: 0.25rem; }
+	#me { color: #666; margin-top: 0; }
+	button { font-size: 1.25rem; padding: 1rem 2rem; cursor: pointer; }
+	button:disabled { cursor: not-allowed; opacity: 0.5; }
+	#log { list-style: none; padding: 0; margin-top: 1.5rem; }
+	#log li { padding: 0.35rem 0; border-bottom: 1px solid #eee; font-family: ui-monospace, SFMono-Regular, monospace; }
+	.me { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>sergame</h1>
+<p id="me">подключение…</p>
+<button id="btn" disabled>Нажать</button>
+<ul id="log"></ul>
+<script>
+	const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+	const ws = new WebSocket(proto + '//' + location.host + '/ws');
+	const btn = document.getElementById('btn');
+	const log = document.getElementById('log');
+	const me = document.getElementById('me');
+	let myId = null;
+
+	ws.addEventListener('open', () => { btn.disabled = false; });
+	ws.addEventListener('close', () => {
+		btn.disabled = true;
+		me.textContent = 'соединение закрыто';
+	});
+	ws.addEventListener('message', (e) => {
+		const msg = JSON.parse(e.data);
+		if (msg.type === 'hello') {
+			myId = msg.clientId;
+			me.textContent = 'вы — ' + myId;
+			return;
+		}
+		if (msg.type === 'press') {
+			const t = new Date(msg.timestamp).toLocaleTimeString();
+			const li = document.createElement('li');
+			if (msg.clientId === myId) li.classList.add('me');
+			li.textContent = t + ' — ' + msg.clientId + ' нажал';
+			log.prepend(li);
+		}
+	});
+	btn.addEventListener('click', () => {
+		ws.send(JSON.stringify({ type: 'press' }));
+	});
+</script>
+</body>
+</html>`;
+
 export default {
-	/**
-	 * This is the standard fetch handler for a Cloudflare Worker
-	 *
-	 * @param request - The request submitted to the Worker from the client
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 * @param ctx - The execution context of the Worker
-	 * @returns The response to be sent back to the client
-	 */
-	async fetch(request, env, ctx): Promise<Response> {
-		// Create a stub to open a communication channel with the Durable Object
-		// instance named "foo".
-		//
-		// Requests from all Workers to the Durable Object instance named "foo"
-		// will go to a single remote Durable Object instance.
-		console.log(env, env.SERGAME_STATE);
-		debugger;
-		const stub = env.SERGAME_STATE.getByName('foo');
+	async fetch(request, env): Promise<Response> {
+		const url = new URL(request.url);
 
-		// Call the `sayHello()` RPC method on the stub to invoke the method on
-		// the remote Durable Object instance.
-		const greeting = await stub.sayHello('world');
+		if (url.pathname === '/ws') {
+			const stub = env.SERGAME_STATE.getByName('room');
+			return stub.fetch(request);
+		}
 
-		return new Response(greeting);
+		if (url.pathname === '/') {
+			return new Response(CLIENT_HTML, {
+				headers: { 'content-type': 'text/html; charset=utf-8' },
+			});
+		}
+
+		return new Response('not found', { status: 404 });
 	},
 } satisfies ExportedHandler<Env>;

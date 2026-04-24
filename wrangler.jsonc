@@ -12,6 +12,14 @@
 			"new_sqlite_classes": ["SergameState"],
 			"tag": "v1",
 		},
+		{
+			"new_sqlite_classes": ["SergameState"],
+			"tag": "v2",
+			"renamed_classes": {
+				"from": "MyDurableObject",
+				"to": "SergameState",
+			},
+		},
 	],
 	"durable_objects": {
 		"bindings": [

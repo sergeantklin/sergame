@@ -53,6 +53,8 @@ export default {
 		//
 		// Requests from all Workers to the Durable Object instance named "foo"
 		// will go to a single remote Durable Object instance.
+		console.log(env, env.SERGAME_STATE);
+		debugger;
 		const stub = env.SERGAME_STATE.getByName('foo');
 
 		// Call the `sayHello()` RPC method on the stub to invoke the method on

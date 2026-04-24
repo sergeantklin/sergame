@@ -2,16 +2,14 @@
 	"name": "sergame",
 	"version": "0.0.0",
 	"private": true,
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
 	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"build": "wrangler build",
-		"cf-typegen": "wrangler types"
-	},
-	"devDependencies": {
-		"@types/node": "^25.6.0",
-		"typescript": "^5.5.2",
-		"wrangler": "^4.84.1"
+		"dev:web": "npm --workspace @sergame/web run dev",
+		"dev:worker": "npm --workspace @sergame/worker run dev",
+		"build:web": "npm --workspace @sergame/web run build",
+		"deploy": "npm run build:web && npm --workspace @sergame/worker run deploy"
 	}
 }

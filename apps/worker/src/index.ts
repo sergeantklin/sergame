@@ -80,63 +80,6 @@ export class SergameState extends DurableObject<Env> {
 	}
 }
 
-const CLIENT_HTML = `<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>sergame</title>
-<style>
-	body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-	h1 { margin-bottom: 0.25rem; }
-	#me { color: #666; margin-top: 0; }
-	button { font-size: 1.25rem; padding: 1rem 2rem; cursor: pointer; }
-	button:disabled { cursor: not-allowed; opacity: 0.5; }
-	#log { list-style: none; padding: 0; margin-top: 1.5rem; }
-	#log li { padding: 0.35rem 0; border-bottom: 1px solid #eee; font-family: ui-monospace, SFMono-Regular, monospace; }
-	.me { font-weight: 600; }
-</style>
-</head>
-<body>
-<h1>sergame</h1>
-<p id="me">подключение…</p>
-<button id="btn" disabled>Нажать</button>
-<ul id="log"></ul>
-<script>
-	const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-	const ws = new WebSocket(proto + '//' + location.host + '/ws');
-	const btn = document.getElementById('btn');
-	const log = document.getElementById('log');
-	const me = document.getElementById('me');
-	let myId = null;
-
-	ws.addEventListener('open', () => { btn.disabled = false; });
-	ws.addEventListener('close', () => {
-		btn.disabled = true;
-		me.textContent = 'соединение закрыто';
-	});
-	ws.addEventListener('message', (e) => {
-		const msg = JSON.parse(e.data);
-		if (msg.type === 'hello') {
-			myId = msg.clientId;
-			me.textContent = 'вы — ' + myId;
-			return;
-		}
-		if (msg.type === 'press') {
-			const t = new Date(msg.timestamp).toLocaleTimeString();
-			const li = document.createElement('li');
-			if (msg.clientId === myId) li.classList.add('me');
-			li.textContent = t + ' — ' + msg.clientId + ' нажал';
-			log.prepend(li);
-		}
-	});
-	btn.addEventListener('click', () => {
-		ws.send(JSON.stringify({ type: 'press' }));
-	});
-</script>
-</body>
-</html>`;
-
 export default {
 	async fetch(request, env): Promise<Response> {
 		const url = new URL(request.url);
@@ -146,12 +89,6 @@ export default {
 			return stub.fetch(request);
 		}
 
-		if (url.pathname === '/') {
-			return new Response(CLIENT_HTML, {
-				headers: { 'content-type': 'text/html; charset=utf-8' },
-			});
-		}
-
-		return new Response('not found', { status: 404 });
+		return env.ASSETS.fetch(request);
 	},
 } satisfies ExportedHandler<Env>;

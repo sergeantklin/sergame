@@ -10,6 +10,7 @@
 		"dev:web": "npm --workspace @sergame/web run dev",
 		"dev:worker": "npm --workspace @sergame/worker run dev",
 		"build:web": "npm --workspace @sergame/web run build",
-		"deploy": "npm run build:web && npm --workspace @sergame/worker run deploy"
+		"deploy": "npm run build:web && npm --workspace @sergame/worker run deploy",
+		"build": "npm run build:web && npm --workspace @sergame/worker run deploy"
 	}
 }

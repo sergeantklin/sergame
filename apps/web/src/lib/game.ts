@@ -63,7 +63,7 @@ function advanceCursor(cursor: RoundCursor, pack: SiqPackage): CursorAdvance {
 	const theme = round.themes[cursor.themeIndex];
 	if (!theme) return { kind: 'end' };
 
-	if (cursor.questionIndex + 1 < theme.questionCount) {
+	if (cursor.questionIndex + 1 < theme.questions.length) {
 		return { kind: 'next-question', cursor: { ...cursor, questionIndex: cursor.questionIndex + 1 } };
 	}
 	if (cursor.themeIndex + 1 < round.themes.length) {

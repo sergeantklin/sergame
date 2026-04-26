@@ -1,6 +1,13 @@
 import JSZip from 'jszip';
 
-export type SiqTheme = { name: string; questionCount: number };
+export type SiqQuestion = {
+	price: number;
+	text: string;
+	answer: string;
+	comment?: string;
+};
+
+export type SiqTheme = { name: string; questions: SiqQuestion[] };
 export type SiqRound = { name: string; themes: SiqTheme[] };
 export type SiqPackage = {
 	name: string;
@@ -33,7 +40,12 @@ export async function parseSiq(file: File): Promise<SiqPackage> {
 		name: roundEl.getAttribute('name') ?? 'раунд',
 		themes: Array.from(roundEl.querySelectorAll('themes > theme')).map((themeEl) => ({
 			name: themeEl.getAttribute('name') ?? 'тема',
-			questionCount: themeEl.querySelectorAll('questions > question').length,
+			questions: Array.from(themeEl.querySelectorAll('questions > question')).map((qEl) => ({
+				price: Number(qEl.getAttribute('price') ?? 0),
+				text: extractScenarioText(qEl),
+				answer: qEl.querySelector('right > answer')?.textContent?.trim() ?? '',
+				comment: qEl.querySelector('info > comments')?.textContent?.trim() || undefined,
+			})),
 		})),
 	}));
 
@@ -43,4 +55,17 @@ export async function parseSiq(file: File): Promise<SiqPackage> {
 	});
 
 	return { name, author, rounds, mediaCount };
+}
+
+function extractScenarioText(qEl: Element): string {
+	const atoms = qEl.querySelectorAll('scenario > atom');
+	const parts: string[] = [];
+	atoms.forEach((a) => {
+		const type = a.getAttribute('type');
+		if (!type || type === 'text' || type === 'say') {
+			const t = a.textContent?.trim();
+			if (t) parts.push(t);
+		}
+	});
+	return parts.join(' ');
 }

@@ -4,6 +4,7 @@ export type RoundCursor = {
 	roundIndex: number;
 	themeIndex: number;
 	questionIndex: number;
+	
 };
 
 export type Stage =
